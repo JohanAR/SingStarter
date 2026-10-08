@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Pitch Matching Lab — offline singing practice</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0e1220; color: #e8eefc; font-size: 15px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .wrap { width: min(1240px, calc(100% - 36px)); margin: 28px auto 50px; }
+  header { display:flex; gap:16px; justify-content: space-between; align-items: start; margin-bottom: 19px; }
+  h1 { font-size: clamp(1.55rem, 3vw, 2.25rem); margin: 0 0 5px; letter-spacing: -.03em; }
+  .subtitle { margin: 0; color: #9faccc; line-height: 1.5; }
+  .local { white-space:nowrap; border:1px solid #3a4b67; color:#afc5da; border-radius: 999px; font-size:.8rem; padding:7px 12px; }
+  .panel { border: 1px solid #303d59; background: #161d30; border-radius: 13px; padding: 18px; margin: 15px 0; }
+  .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom: 16px; }
+  button { cursor:pointer; font:inherit; border-radius: 9px; padding: 12px 17px; border:1px solid #506585;
+    background:#26344e; color:#f5f8ff; font-weight:650; }
+  button:hover:not(:disabled) { background: #344665; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #8ec5ff; outline-offset: 3px; }
+  button:disabled { opacity:.5; cursor:wait; }
+  button.primary { background:#547bf0; border-color:#7499ff; color:#fff; }
+  button.primary:hover:not(:disabled) { background:#678bf9; }
+  .play-state { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-left:auto; }
+  .state-dot { width:9px; height:9px; border-radius:100%; background:#7185a0; display:inline-block; }
+  .state-dot.listen { background: #fbc77a; box-shadow:0 0 0 4px #fbc77a18; }
+  .state-dot.sing { background:#57e2b6; box-shadow:0 0 0 4px #57e2b618; }
+  #phase { font-weight:650; }
+  .hint { color:#9faccc; font-size:.91rem; }
+  .chart-shell { position:relative; overflow:hidden; background:#10182b; border:1px solid #33415f; border-radius:10px; }
+  canvas { width:100%; height: 445px; display:block; }
+  .legend { display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:13px; color:#b8c6db; font-size:.88rem; }
+  .legend i { display:inline-block; width:18px; height:6px; border-radius:3px; margin-right:7px; vertical-align:middle; }
+  .metrics { display:flex; align-items:center; gap:26px; margin-top:17px; flex-wrap:wrap; }
+  .metric { min-width:125px; }
+  .metric .name { color:#97a9cb; font-size:.82rem; margin-bottom:3px; }
+  .metric .val { font-size:1.12rem; font-variant-numeric: tabular-nums; font-weight:650; }
+  h2 { font-size:1.15rem; margin:0 0 17px; }
+  .controls { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:18px 20px; }
+  label.control { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .control span { color:#bfcde5; font-size:.88rem; }
+  select, input { min-width:0; width:100%; padding:9px 11px; background:#0f1729; border:1px solid #485877; color:#edf4ff; border-radius:7px;
+    font:inherit; height:40px; }
+  input[type=number] { appearance: textfield; }
+  .subhelp { color:#9eacc8; font-size:.84rem; line-height:1.5; margin:16px 0 0; }
+  .footnotes { color:#a9b6cd; line-height:1.6; font-size:.89rem; padding: 0 2px; }
+  .footnotes p { margin: 8px 0; }
+  #message.error { color:#ffb9aa; }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }
+  @media (max-width:780px) { .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } .play-state { margin-left:0; width:100%; } }
+  @media (max-width:490px) { .wrap { width:calc(100% - 20px); margin-top:15px; } header { flex-direction:column; gap:9px; }
+    .panel { padding:12px; } canvas { height:350px; } .controls { gap:13px; } .metrics { gap:10px; } .metric { min-width:100px; }
+    button { flex-grow:1; padding:12px 7px; } }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div>
+      <h1>Pitch Matching Lab</h1>
+      <p class="subtitle">Practice matching short note sequences, or sing freely with a live scrolling pitch trace.</p>
+    </div>
+    <span class="local">100% offline · no dependencies</span>
+  </header>
+
+  <section class="panel" aria-label="Practice">
+    <div class="toolbar">
+      <button id="again" class="primary" type="button">▶ Play same sequence</button>
+      <button id="random" type="button">↻ New random sequence</button>
+      <button id="free" type="button" aria-pressed="false">♫ Start free play</button>
+      <div class="play-state" aria-live="polite"><span id="stateDot" class="state-dot"></span><span id="phase">Ready</span></div>
+    </div>
+    <div class="chart-shell"><canvas id="sheet" aria-label="Pitch grid with note targets and detected microphone pitch; free play scrolls its pitch history to the left"></canvas></div>
+    <div class="legend" aria-hidden="true">
+      <span id="legendTarget"><i style="background:#7996f5"></i>Target notes</span>
+      <span id="legendGreen"><i style="background:#56e5aa"></i>Within 40 cents</span>
+      <span id="legendYellow"><i style="background:#fac26f"></i>40–90 cents off</span>
+      <span id="legendRed"><i style="background:#f27f91"></i>More than 90 cents off</span>
+    </div>
+    <div class="metrics" aria-live="off">
+      <div class="metric"><div id="targetLabel" class="name">Reference at playhead</div><div id="target" class="val">—</div></div>
+      <div class="metric"><div class="name">Mic detected</div><div id="detected" class="val">—</div></div>
+      <div class="metric"><div id="differenceLabel" class="name">Pitch relative to target</div><div id="difference" class="val">—</div></div>
+    </div>
+    <p id="message" class="subhelp" role="status">Play a reference sequence and sing it back, or choose free play to watch your pitch scroll continuously. Use headphones when playing references.</p>
+  </section>
+
+  <section class="panel" aria-label="Settings">
+    <h2>Settings</h2>
+    <div class="controls">
+      <label class="control"><span>Number of notes</span><input id="count" type="number" min="1" max="8" step="1" value="4"></label>
+      <label class="control"><span>Note length (seconds)</span><input id="duration" type="number" min="0.2" max="4" step="0.05" value="1"></label>
+      <label class="control"><span>Gap between notes (seconds)</span><input id="gap" type="number" min="0" max="3" step="0.05" value="0.3"></label>
+      <label class="control"><span>Silent lead-in (seconds)</span><input id="lead" type="number" min="0" max="5" step="0.1" value="1"></label>
+
+      <label class="control"><span>Key / root</span>
+        <select id="root"><option value="0" selected>C</option><option value="1">C♯</option><option value="2">D</option><option value="3">E♭</option><option value="4">E</option><option value="5">F</option><option value="6">F♯</option><option value="7">G</option><option value="8">A♭</option><option value="9">A</option><option value="10">B♭</option><option value="11">B</option></select>
+      </label>
+      <label class="control"><span>Scale</span><select id="scale">
+        <option value="major" selected>Major</option><option value="minor">Natural minor</option>
+        <option value="pentatonic">Major pentatonic</option><option value="minorPentatonic">Minor pentatonic</option>
+        <option value="chromatic">Chromatic</option>
+      </select></label>
+      <label class="control"><span>Starting octave</span><select id="octave">
+        <option value="2">2 (low)</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 (high)</option>
+      </select></label>
+      <label class="control"><span>Pitch range</span><select id="range">
+        <option value="12" selected>1 octave</option><option value="24">2 octaves</option>
+      </select></label>
+
+      <label class="control"><span>Maximum interval</span><select id="interval">
+        <option value="2">2 semitones</option><option value="5" selected>5 semitones</option>
+        <option value="7">7 semitones</option><option value="12">12 semitones</option>
+        <option value="24">No limit</option>
+      </select></label>
+      <label class="control"><span>Synthesized vowel</span><select id="vowel">
+        <option value="ah" selected>Ah</option><option value="oo">Oo</option><option value="ee">Ee</option><option value="sine">Pure sine (comparison)</option><option value="none">None — sing without reference</option>
+      </select></label>
+      <label class="control"><span>Reference volume</span><input id="volume" type="number" min="0" max="100" step="5" value="45"></label>
+      <label class="control"><span>Mic latency correction (ms)</span><input id="latency" type="number" min="0" max="350" step="10" value="35"></label>
+      <label class="control"><span>Free-play history (seconds)</span><input id="freeWindow" type="number" min="5" max="60" step="1" value="12"></label>
+    </div>
+    <p class="subhelp">Changing the note count, key, scale, octave, pitch range, or maximum interval generates a new sequence when idle. With vowel “None”, the reference pass is skipped. In free play, the starting octave and pitch range determine the visible register (with an octave of margin above and below). Settings apply to the next round.</p>
+  </section>
+  <section class="footnotes" aria-label="Notes">
+    <p><strong>How to use:</strong> For sequence practice, click either play button and allow microphone permission. Listen as the marker crosses each bar, then sing along on the silent pass. Select vowel “None” to skip listening and sing straight away. In free play, pitch moves left past a fixed playhead; every detected pitch is green because there is no target. Click “Stop free play” or press <kbd>Esc</kbd> to stop.</p>
+    <p><strong>Pitch tracking:</strong> A simple YIN-style fundamental-frequency detector operates entirely in the page. It works best with a single voice, a reasonably quiet room, and headphones. Tracking has some latency and can make octave errors, particularly with breathy or noisy singing; the graph is feedback, not a medical or musical assessment.</p>
+    <p><strong>Privacy:</strong> All synthesis and microphone analysis happen locally. The microphone is released when a sequence finishes, free play is stopped, or the tab is hidden. The page makes no network requests and contains no third-party code.</p>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const canvas = $('sheet');
+  const draw = canvas.getContext('2d');
+  const playbackButton = $('again');
+  const randomButton = $('random');
+  const freeButton = $('free');
+  const settingsIds = ['count','duration','gap','lead','root','scale','octave','range','interval','vowel','volume','latency','freeWindow'];
+  const pitchControls = new Set(['count','root','scale','octave','range','interval']);
+  const names = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+  const scales = {
+    major:[0,2,4,5,7,9,11], minor:[0,2,3,5,7,8,10],
+    pentatonic:[0,2,4,7,9], minorPentatonic:[0,3,5,7,10],
+    chromatic:[0,1,2,3,4,5,6,7,8,9,10,11]
+  };
+  const vowels = {
+    ah: [[750,145,1.2], [1220,230,.9], [2600,390,.65]],
+    oo: [[370,105,1.2], [850,180,1.0], [2450,340,.62]],
+    ee: [[300,100,1.2], [2250,280,1.0], [3000,350,.7]]
+  };
+  let sequence = [], audio = null, master = null, micStream = null, micSource = null;
+  let analyser = null, micSink = null, microphoneData = null;
+  let session = null, generation = 0, frameId = 0, lastResult = null, sequenceDirty = false;
+  let scheduledNodes = [], lastSettings = readSettings();
+  let chart = null, freeActive = false;
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function readBounded(id) {
+    const el = $(id), min = Number(el.min), max = Number(el.max);
+    const parsed = Number(el.value);
+    const value = el.value.trim() === '' || !Number.isFinite(parsed) ? Number(el.defaultValue) : parsed;
+    return clamp(value, min, max);
+  }
+  function readSettings() {
+    return {
+      count:Math.round(readBounded('count')), duration:readBounded('duration'), gap:readBounded('gap'),
+      lead:readBounded('lead'), root:Number($('root').value), scale:$('scale').value,
+      octave:Number($('octave').value), range:Number($('range').value),
+      interval:Number($('interval').value), vowel:$('vowel').value,
+      volume:readBounded('volume')/100, latency:readBounded('latency')/1000,
+      freeWindow:readBounded('freeWindow')
+    };
+  }
+  function midiHz(midi) { return 440 * Math.pow(2, (midi-69)/12); }
+  function hzMidi(hz) { return 69 + 12 * Math.log2(hz/440); }
+  function noteName(midi) { const n=Math.round(midi); return names[((n%12)+12)%12] + (Math.floor(n/12)-1); }
+  function notePool(cfg) {
+    const base=12*(cfg.octave+1)+cfg.root;
+    return Array.from({length:cfg.range+1}, (_,i)=>base+i)
+      .filter(m => scales[cfg.scale].includes((m-base)%12) || m === base+cfg.range);
+  }
+  function newSequence(cfg) {
+    const pool=notePool(cfg); let current=pool[Math.floor(Math.random()*pool.length)];
+    const result=[current];
+    for(let i=1; i<cfg.count; i++) {
+      let candidates=pool.filter(x=>Math.abs(x-current)<=cfg.interval);
+      const different=candidates.filter(x=>x!==current);
+      if (different.length) candidates=different;
+      current=candidates[Math.floor(Math.random()*candidates.length)];
+      result.push(current);
+    }
+    return result;
+  }
+  function setupTimeline(seq,cfg) {
+    const start=cfg.lead;
+    return {seq:seq.slice(), cfg, passDuration:start+seq.length*cfg.duration+(seq.length-1)*cfg.gap,
+      noteStarts:seq.map((_,i)=>start+i*(cfg.duration+cfg.gap))};
+  }
+  function noteAt(t, timeline) {
+    for(let i=0;i<timeline.seq.length;i++) {
+      const relative=t-timeline.noteStarts[i];
+      if(relative>=0 && relative<timeline.cfg.duration) return i;
+    }
+    return -1;
+  }
+  function state(label, phase='') {
+    $('phase').textContent=label;
+    $('stateDot').className='state-dot'+(phase?' '+phase:'');
+  }
+  function message(text, isError=false) {
+    $('message').textContent=text;
+    $('message').classList.toggle('error',isError);
+  }
+  function setButtons(disabled) { playbackButton.disabled=disabled; randomButton.disabled=disabled; }
+  function setFreeActive(active) {
+    freeActive=active;
+    freeButton.textContent=active?'■ Stop free play':'♫ Start free play';
+    freeButton.setAttribute('aria-pressed',String(active));
+    freeButton.classList.toggle('primary',active);
+  }
+  function updateLegend(isFree) {
+    $('legendTarget').hidden=isFree;
+    $('legendYellow').hidden=isFree;
+    $('legendRed').hidden=isFree;
+    $('legendGreen').lastChild.textContent=isFree?' Any detected pitch':' Within 40 cents';
+    $('targetLabel').textContent=isFree?'Reference':'Reference at playhead';
+    $('differenceLabel').textContent=isFree?'From nearest note':'Pitch relative to target';
+  }
+
+  async function ensureAudioAndMic(token) {
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('This browser does not expose microphone access for this page. Open the file directly in a modern browser (not an embedded preview).');
+    }
+    if(!audio) {
+      audio=new (window.AudioContext || window.webkitAudioContext)({latencyHint:'interactive'});
+      master=audio.createGain();
+      master.gain.value=0.55;
+      master.connect(audio.destination);
+    }
+    await audio.resume();
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{
+      echoCancellation:false, noiseSuppression:false, autoGainControl:false,
+      channelCount:1
+    }, video:false});
+    if (token!==generation) {
+      for(const track of stream.getTracks()) track.stop();
+      return;
+    }
+    micStream=stream;
+    micSource=audio.createMediaStreamSource(stream);
+    analyser=audio.createAnalyser();
+    analyser.fftSize=8192;
+    analyser.smoothingTimeConstant=0;
+    micSink=audio.createGain();
+    micSink.gain.value=0;  // Keep the analysis graph active without monitoring mic audio.
+    micSource.connect(analyser);
+    analyser.connect(micSink);
+    micSink.connect(audio.destination);
+    microphoneData=new Float32Array(analyser.fftSize);
+  }
+  function releaseMic() {
+    if(micSource) { micSource.disconnect(); micSource=null; }
+    if(analyser) { analyser.disconnect(); analyser=null; }
+    if(micSink) { micSink.disconnect(); micSink=null; }
+    if(micStream) { for(const t of micStream.getTracks()) t.stop(); micStream=null; }
+    microphoneData=null;
+  }
+  function stopScheduled() {
+    for(const node of scheduledNodes) { try { node.stop(); } catch(e) { /* Already stopped */ } try {node.disconnect();}catch(e){} }
+    scheduledNodes=[];
+  }
+  function interrupt(clearTrace=false) {
+    generation++;
+    if(frameId) cancelAnimationFrame(frameId);
+    frameId=0;
+    stopScheduled();
+    releaseMic();
+    if(session && clearTrace) session.trace=[];
+    if(session && session.kind==='free') {
+      session.frozenTime=Math.max(0,audio.currentTime-session.startAt);
+      lastResult=session;
+    }
+    session=null;
+    setFreeActive(false);
+    setButtons(false);
+    state('Ready');
+    $('detected').textContent='—'; $('difference').textContent='—';
+  }
+
+  function makeVoiceWave(freq, vowel) {
+    if(vowel==='sine') return null;
+    const re=new Float32Array(128), im=new Float32Array(128);
+    const formants=vowels[vowel];
+    for(let n=1;n<128;n++) {
+      const harmonicFreq=n*freq;
+      if(harmonicFreq>10000 || harmonicFreq>audio.sampleRate/2) break;
+      let spectrum=0.12;
+      for(const [center,width,height] of formants) {
+        const deviation=(harmonicFreq-center)/width;
+        spectrum+=height*Math.exp(-.5*deviation*deviation);
+      }
+      // Formants + spectral rolloff approximate a sustained voiced vowel.
+      im[n]=spectrum/Math.pow(n,1.04)+(n===1 ? .12 : 0);
+    }
+    return audio.createPeriodicWave(re,im);
+  }
+  function scheduleVoice(midi, at, duration, cfg) {
+    const frequency=midiHz(midi);
+    const oscillator=audio.createOscillator();
+    if(cfg.vowel==='sine') oscillator.type='sine';
+    else oscillator.setPeriodicWave(makeVoiceWave(frequency,cfg.vowel));
+    oscillator.frequency.setValueAtTime(frequency, at);
+    oscillator.detune.setValueAtTime(-7,at);
+    oscillator.detune.linearRampToValueAtTime(0,at+Math.min(.1,duration*.2));
+    const envelope=audio.createGain();
+    envelope.gain.setValueAtTime(0,at);
+    const attack=Math.min(.055,duration*.25), release=Math.min(.07,duration*.3);
+    const level=cfg.volume*.34;
+    envelope.gain.linearRampToValueAtTime(level,at+attack);
+    envelope.gain.setValueAtTime(level,at+duration-release);
+    envelope.gain.linearRampToValueAtTime(0,at+duration);
+    oscillator.connect(envelope).connect(master);
+    const vibrato=audio.createOscillator(); vibrato.frequency.value=5.1;
+    const vibratoDepth=audio.createGain();
+    vibratoDepth.gain.setValueAtTime(0,at);
+    vibratoDepth.gain.linearRampToValueAtTime(7, at+Math.min(.28,duration*.6));
+    vibrato.connect(vibratoDepth).connect(oscillator.detune);
+    oscillator.start(at); vibrato.start(at);
+    oscillator.stop(at+duration+.025); vibrato.stop(at+duration+.025);
+    scheduledNodes.push(oscillator,vibrato,envelope,vibratoDepth);
+  }
+
+  async function play(fresh) {
+    interrupt();
+    const cfg=readSettings(); lastSettings=cfg;
+    if(fresh || sequenceDirty || sequence.length===0) sequence=newSequence(cfg);
+    sequenceDirty=false;
+    if(sequence.length!==cfg.count) sequence=newSequence(cfg);
+    const token=generation;
+    state('Requesting microphone…');
+    message('Allow microphone permission to start the exercise.');
+    setButtons(true);
+    try {
+      await ensureAudioAndMic(token);
+      if(token!==generation) return;
+      const timeline=setupTimeline(sequence,cfg);
+      const hasReference=cfg.vowel!=='none';
+      session={...timeline,kind:'sequence',startAt:audio.currentTime+.16,trace:[], lastMicSample:-1,
+        smoothedMidi:null,segment:0,breakTrace:false,completed:false,
+        phase:hasReference?'reference':'sing',hasReference,
+        singOffset:hasReference?timeline.passDuration:0};
+      if(hasReference) {
+        for(let i=0;i<sequence.length;i++) {
+          scheduleVoice(sequence[i],session.startAt+timeline.noteStarts[i],cfg.duration,cfg);
+        }
+      }
+      setButtons(false);
+      lastResult=session;
+      updateLegend(false);
+      message(hasReference
+        ? 'Pass 1: listen to the reference. When the marker returns to the left, sing the sequence.'
+        : 'No reference: sing the notes directly as the marker sweeps across the targets.');
+      render();
+      frameId=requestAnimationFrame(tick);
+    } catch(error) {
+      if(token!==generation) return;
+      console.error(error);
+      releaseMic(); stopScheduled(); session=null;
+      setButtons(false); state('Microphone unavailable');
+      message('Microphone error: '+(error.message || error.name || String(error)) +
+        '. Check browser permission and microphone availability.',true);
+      render();
+    }
+  }
+
+  async function startFreePlay() {
+    interrupt();
+    const cfg=readSettings(); lastSettings=cfg;
+    const token=generation;
+    setFreeActive(true);
+    setButtons(true);
+    updateLegend(true);
+    state('Requesting microphone…');
+    message('Allow microphone permission. Free play runs until you stop it or leave the tab.');
+    try {
+      await ensureAudioAndMic(token);
+      if(token!==generation) return;
+      // For free play, display an extra octave above and below the chosen range.
+      const base=12*(cfg.octave+1)+cfg.root;
+      const lo=base-12, hi=base+cfg.range+12;
+      session={kind:'free',cfg,seq:[],trace:[],trackingNotes:[lo,hi],
+        startAt:audio.currentTime+.16,lastMicSample:-1,
+        smoothedMidi:null,segment:0,breakTrace:false,completed:false,phase:'free',
+        frozenTime:0};
+      lastResult=session;
+      setButtons(false);
+      state('Free play · Listening','sing');
+      $('target').textContent='Any note';
+      $('detected').textContent='—'; $('difference').textContent='—';
+      message('Sing any notes. Every detected pitch is green; the history scrolls left from the fixed marker.');
+      render();
+      frameId=requestAnimationFrame(tick);
+    } catch(error) {
+      if(token!==generation) return;
+      console.error(error);
+      releaseMic(); session=null; setFreeActive(false); setButtons(false);
+      state('Microphone unavailable');
+      message('Microphone error: '+(error.message || error.name || String(error)) +
+        '. Check browser permission and microphone availability.',true);
+      render();
+    }
+  }
+
+  function stopFreePlay() {
+    if(!freeActive) return;
+    interrupt();
+    updateLegend(true);
+    state('Free play · Stopped');
+    $('target').textContent='Any note';
+    message('Free play stopped; the last few seconds remain visible. The microphone is released.');
+    render();
+  }
+
+  // YIN's normalized difference function, with stride adapted to the exercise's
+  // pitch range for efficient tracking of both low and high notes. Monophonic only.
+  function analysisStride(expectedMidi) {
+    if(!expectedMidi || !expectedMidi.length) return 4;
+    const highest=Math.max(...expectedMidi.map(midiHz));
+    return highest>2100?1:highest>1000?2:4;
+  }
+  function estimatePitch(samples, sampleRate, expectedMidi=null) {
+    const stride=analysisStride(expectedMidi), len=1650, window=1400;
+    const lowest=expectedMidi?.length?Math.min(...expectedMidi.map(midiHz)):110;
+    const highest=expectedMidi?.length?Math.max(...expectedMidi.map(midiHz)):840;
+    const minFreq=Math.max(55,lowest*.45), maxFreq=Math.min(4200,Math.max(1050,highest*1.25));
+    const rate=sampleRate/stride;
+    const minTau=Math.max(2,Math.floor(rate/maxFreq));
+    const maxTau=Math.min(Math.floor(rate/minFreq),len-window-2);
+    if(maxTau<=minTau) return null;
+    const x=new Float32Array(len);
+    const begin=samples.length-len*stride;
+    let energy=0, mean=0;
+    for(let i=0;i<len;i++) { const v=samples[begin+i*stride]; x[i]=v; mean+=v; }
+    mean/=len;
+    for(let i=0;i<len;i++) { x[i]-=mean; if(i<window) energy+=x[i]*x[i]; }
+    const rms=Math.sqrt(energy/window);
+    if(rms<0.007) return null;
+    const diff=new Float32Array(maxTau+1);
+    for(let tau=1;tau<=maxTau;tau++) {
+      let sum=0;
+      for(let j=0;j<window;j++) { const d=x[j]-x[j+tau]; sum+=d*d; }
+      diff[tau]=sum;
+    }
+    let cumulative=0, candidate=-1, best=1;
+    const normalized=new Float32Array(maxTau+1);
+    normalized[0]=1;
+    // Fill the complete array before looking for minima: a YIN minimum
+    // needs valid values on *both* sides for correct pitch interpolation.
+    for(let tau=1;tau<=maxTau;tau++) {
+      cumulative+=diff[tau];
+      normalized[tau]=cumulative>0 ? diff[tau]*tau/cumulative : 1;
+    }
+    for(let tau=minTau;tau<=maxTau;tau++) {
+      if(normalized[tau]<.16) {
+        while(tau<maxTau && normalized[tau+1]<normalized[tau]) tau++;
+        candidate=tau;
+        break;
+      }
+      if(normalized[tau]<best) { best=normalized[tau]; candidate=tau; }
+    }
+    if(candidate<minTau || normalized[candidate]>.24) return null;
+    // Quadratic refinement gives sub-sample pitch estimates.
+    const a=normalized[Math.max(1,candidate-1)], b=normalized[candidate],
+      c=normalized[Math.min(maxTau,candidate+1)];
+    const divisor=a-2*b+c;
+    const delta=Math.abs(divisor)>1e-8 ? clamp(.5*(a-c)/divisor,-1,1):0;
+    const hz=rate/(candidate+delta);
+    return Number.isFinite(hz) && hz>=minFreq && hz<=maxFreq ? {hz,rms,quality:1-b} : null;
+  }
+
+  function sampleMic(elapsed) {
+    if(!session || !analyser || !microphoneData) return;
+    const isFree=session.kind==='free';
+    const notes=isFree?session.trackingNotes:session.seq;
+    // Timestamp the center of the analysis window, accounting for processing latency.
+    const analyzedAt=elapsed-((1650-1400/2)*analysisStride(notes))/audio.sampleRate-session.cfg.latency;
+    const t=analyzedAt-(isFree?0:session.singOffset);
+    if(t<0 || (!isFree && t>session.passDuration) || t-session.lastMicSample<.031) return;
+    session.lastMicSample=t;
+    analyser.getFloatTimeDomainData(microphoneData);
+    const pitch=estimatePitch(microphoneData,audio.sampleRate,notes);
+    if(!pitch) {
+      session.smoothedMidi=null;
+      session.breakTrace=true;
+      $('detected').textContent='—'; $('difference').textContent='—';
+      return;
+    }
+    let midi=hzMidi(pitch.hz);
+    if(session.smoothedMidi!==null && Math.abs(midi-session.smoothedMidi)<3) midi=.7*midi+.3*session.smoothedMidi;
+    session.smoothedMidi=midi;
+    const note=isFree?-1:noteAt(t,session);
+    const error=note>=0 ? 100*(midi-session.seq[note]) : null;
+    if(session.breakTrace) { session.segment++; session.breakTrace=false; }
+    session.trace.push({t,midi,note,error,segment:session.segment});
+    if(isFree) {
+      const cutoff=t-session.cfg.freeWindow-.2;
+      while(session.trace.length && session.trace[0].t<cutoff) session.trace.shift();
+    }
+    $('detected').textContent=noteName(midi)+' · '+Math.round(pitch.hz)+' Hz';
+    if(isFree) {
+      const deviation=100*(midi-Math.round(midi));
+      $('difference').textContent=(deviation>=0?'+':'')+Math.round(deviation)+' cents';
+    } else {
+      $('difference').textContent=error===null ? 'In a gap' : (error>=0?'+':'')+Math.round(error)+' cents';
+    }
+  }
+  function tick() {
+    if(!session) return;
+    const elapsed=audio.currentTime-session.startAt;
+    if(session.kind==='free') {
+      state('Free play · Listening','sing');
+      $('target').textContent='Any note';
+      if(elapsed>=0) sampleMic(elapsed);
+      // Expire history even while the user is silent.
+      const cutoff=elapsed-session.cfg.freeWindow-.2;
+      while(session.trace.length && session.trace[0].t<cutoff) session.trace.shift();
+      render();
+      frameId=requestAnimationFrame(tick);
+      return;
+    }
+    const totalDuration=session.passDuration+session.singOffset;
+    if(elapsed>=totalDuration+.13) {
+      lastResult=session;
+      session.completed=true;
+      stopScheduled(); releaseMic(); session=null; frameId=0;
+      state('Finished');
+      $('target').textContent='—';
+      message('Round complete. The trace stays visible. Replay the sequence or create a new one.');
+      render();
+      return;
+    }
+    const singing=elapsed>=session.singOffset;
+    if(elapsed>=0 && !singing) {
+      state('1 / 2 · Listen', 'listen');
+    } else if(singing) {
+      if(session.phase!=='sing') {
+        session.phase='sing';
+        message('Sing as the marker moves over each note. Your detected pitch is drawn in color.');
+      }
+      state(session.hasReference?'2 / 2 · Sing':'Sing · No reference', 'sing');
+      sampleMic(elapsed);
+    } else state('Starting…');
+    const t=clamp(singing?elapsed-session.singOffset:elapsed,0,session.passDuration);
+    const current=noteAt(t,session);
+    $('target').textContent=current>=0?noteName(session.seq[current]):'—';
+    render();
+    frameId=requestAnimationFrame(tick);
+  }
+
+  function layout(timeline) {
+    const w=canvas.clientWidth, h=canvas.clientHeight;
+    const startMidi=12*(timeline.cfg.octave+1)+timeline.cfg.root;
+    // Free play needs a wider register and no fixed exercise duration.
+    const isFree=timeline.kind==='free';
+    const lo=isFree?startMidi-12:Math.min(...timeline.seq,startMidi)-2;
+    const hi=isFree?startMidi+timeline.cfg.range+12:Math.max(...timeline.seq,startMidi+timeline.cfg.range)+2;
+    const left=w<520?49:66, right=20, top=30, bottom=30;
+    const height=h-top-bottom, width=Math.max(1,w-left-right);
+    const markerX=left+width*.96;
+    const now=isFree?(session===timeline ? Math.max(0,audio.currentTime-timeline.startAt) : timeline.frozenTime):0;
+    return {w,h,left,right,top,bottom,lo,hi,height,width,markerX,now,
+      x:t=>isFree?markerX+(t-now)*(markerX-left)/timeline.cfg.freeWindow
+                 :left+width*clamp(t/timeline.passDuration,0,1),
+      y:m=>top+(hi-m)*height/(hi-lo),
+      band:height/(hi-lo)};
+  }
+  function resizeCanvas() {
+    const w=canvas.clientWidth, h=canvas.clientHeight;
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const pxW=Math.max(1,Math.round(w*dpr)), pxH=Math.max(1,Math.round(h*dpr));
+    if(canvas.width!==pxW || canvas.height!==pxH) { canvas.width=pxW; canvas.height=pxH; }
+    draw.setTransform(pxW/w,0,0,pxH/h,0,0);
+  }
+  function roundRect(x,y,w,h,r) {
+    if(w<=0 || h<=0) return;
+    const rad=Math.min(r,w/2,h/2);
+    draw.beginPath(); draw.moveTo(x+rad,y); draw.lineTo(x+w-rad,y);
+    draw.quadraticCurveTo(x+w,y,x+w,y+rad);
+    draw.lineTo(x+w,y+h-rad); draw.quadraticCurveTo(x+w,y+h,x+w-rad,y+h);
+    draw.lineTo(x+rad,y+h); draw.quadraticCurveTo(x,y+h,x,y+h-rad);
+    draw.lineTo(x,y+rad); draw.quadraticCurveTo(x,y,x+rad,y); draw.closePath();
+  }
+  function colorForError(error) {
+    if(error===null) return '#8da2ba';
+    const magnitude=Math.abs(error);
+    return magnitude<=40?'#56e5aa':magnitude<=90?'#fac26f':'#f27f91';
+  }
+  function renderFreeChart(timeline,L) {
+    // The cursor never moves: the newest pitch always arrives just to its left.
+    const trace=timeline.trace||[];
+    draw.save();
+    draw.beginPath();
+    draw.rect(L.left,L.top,L.markerX-L.left,L.height);
+    draw.clip();
+    const step=timeline.cfg.freeWindow>25?5:timeline.cfg.freeWindow>12?2:1;
+    draw.textAlign='center'; draw.textBaseline='alphabetic'; draw.font='10px system-ui';
+    for(let ago=0;ago<=timeline.cfg.freeWindow+.001;ago+=step) {
+      const x=L.x(L.now-ago);
+      draw.beginPath(); draw.moveTo(x,L.top); draw.lineTo(x,L.h-L.bottom);
+      draw.strokeStyle='#ffffff13'; draw.lineWidth=1; draw.stroke();
+      draw.fillStyle='#8193af';
+      draw.fillText(ago===0?'now':'−'+ago+'s',x,L.h-10);
+    }
+    for(let j=0;j<trace.length;j++) {
+      const b=trace[j], a=trace[j-1];
+      const x=L.x(b.t), y=L.y(b.midi);
+      draw.strokeStyle='#56e5aa'; draw.fillStyle='#56e5aa';
+      draw.lineWidth=3.4; draw.lineCap='round';
+      if(a && a.segment===b.segment && b.t-a.t<.11 && Math.abs(a.midi-b.midi)<7) {
+        draw.beginPath(); draw.moveTo(L.x(a.t),L.y(a.midi)); draw.lineTo(x,y); draw.stroke();
+      } else { draw.beginPath(); draw.arc(x,y,2.4,0,Math.PI*2); draw.fill(); }
+    }
+    draw.restore();
+    draw.fillStyle='#ffffff16'; draw.fillRect(L.markerX-2,L.top,4,L.height);
+    draw.strokeStyle='#f9fbff'; draw.lineWidth=2; draw.beginPath();
+    draw.moveTo(L.markerX,L.top-9); draw.lineTo(L.markerX,L.h-L.bottom); draw.stroke();
+    draw.fillStyle='#f9fbff'; draw.beginPath();
+    draw.moveTo(L.markerX-5,L.top-10); draw.lineTo(L.markerX+5,L.top-10);
+    draw.lineTo(L.markerX,L.top-3); draw.closePath(); draw.fill();
+    draw.fillStyle='#94a8ca'; draw.textAlign='right'; draw.textBaseline='middle';
+    draw.font='11px system-ui'; draw.fillText('← PAST     NOW',L.w-14,16);
+  }
+
+  function render() {
+    resizeCanvas();
+    const timeline=session||lastResult||setupTimeline(sequence,lastSettings);
+    const L=layout(timeline);
+    chart=L;
+    draw.clearRect(0,0,L.w,L.h);
+    draw.fillStyle='#10182b'; draw.fillRect(0,0,L.w,L.h);
+    // Horizontal semitone grid + labeled octave/scale lines.
+    for(let pitch=Math.ceil(L.lo);pitch<=Math.floor(L.hi);pitch++) {
+      const y=L.y(pitch), octave=pitch%12===0, scaleLine=(pitch-L.lo)%2===0;
+      draw.beginPath(); draw.moveTo(L.left,y); draw.lineTo(L.w-L.right,y);
+      draw.strokeStyle=octave?'#54678c':scaleLine?'#33435f':'#26354e';
+      draw.lineWidth=octave?1.6:1; draw.stroke();
+      if(octave || pitch%2===0 || L.band>25) {
+        draw.fillStyle=octave?'#d4dff5':'#8599b9';
+        draw.font=octave?'600 11px system-ui':'11px system-ui';
+        draw.textAlign='right'; draw.textBaseline='middle';
+        draw.fillText(noteName(pitch),L.left-10,y);
+      }
+    }
+    if(timeline.kind==='free') {
+      renderFreeChart(timeline,L);
+      draw.textBaseline='middle'; draw.textAlign='left'; draw.font='11px system-ui';
+      draw.fillStyle='#94a8ca'; draw.fillText('PITCH',8,16);
+      return;
+    }
+    // Beat-independent time marks, and the two passes share exactly this axis.
+    draw.textBaseline='alphabetic'; draw.textAlign='center'; draw.font='10px system-ui';
+    const timeTick=timeline.passDuration>16?2:timeline.passDuration>8?1:.5;
+    for(let t=0;t<=timeline.passDuration+.001;t+=timeTick) {
+      const x=L.x(t);
+      draw.beginPath(); draw.moveTo(x,L.top); draw.lineTo(x,L.h-L.bottom);
+      draw.strokeStyle='#ffffff0c'; draw.lineWidth=1; draw.stroke();
+      draw.fillStyle='#7388a8'; draw.fillText(t.toFixed(t%1===0?0:1)+'s',x,L.h-10);
+    }
+    // Target note blocks.
+    for(let i=0;i<timeline.seq.length;i++) {
+      const x=L.x(timeline.noteStarts[i]), right=L.x(timeline.noteStarts[i]+timeline.cfg.duration);
+      const y=L.y(timeline.seq[i]), ht=clamp(L.band*.72,7,23);
+      draw.fillStyle='#667fdf44'; draw.strokeStyle='#92abff'; draw.lineWidth=1;
+      roundRect(x,y-ht/2,right-x,ht,Math.min(4,ht/4)); draw.fill(); draw.stroke();
+    }
+    // Color portions of the target bar when singing is accurately matched.
+    const trace=timeline.trace||[];
+    for(let j=1;j<trace.length;j++) {
+      const a=trace[j-1], b=trace[j];
+      if(a.note<0 || a.segment!==b.segment || a.note!==b.note || b.t-a.t>.13 || Math.abs(b.error)>40 || Math.abs(a.error)>40) continue;
+      const x=L.x(a.t), x2=L.x(b.t), y=L.y(timeline.seq[a.note]);
+      const ht=clamp(L.band*.65,6,21);
+      draw.fillStyle='#56e5aaaa'; draw.fillRect(x,y-ht/2,Math.max(1,x2-x),ht);
+    }
+    // Actual pitch trace: discontinuous across silence, gaps, and note boundaries.
+    for(let j=0;j<trace.length;j++) {
+      const b=trace[j], x=L.x(b.t), y=L.y(b.midi), a=trace[j-1];
+      draw.strokeStyle=colorForError(b.error); draw.fillStyle=draw.strokeStyle;
+      draw.lineWidth=3.4; draw.lineCap='round';
+      if(a && a.segment===b.segment && b.t-a.t<.11 && a.note===b.note && Math.abs(a.midi-b.midi)<7) {
+        draw.beginPath(); draw.moveTo(L.x(a.t),L.y(a.midi)); draw.lineTo(x,y); draw.stroke();
+      } else { draw.beginPath(); draw.arc(x,y,2.4,0,Math.PI*2); draw.fill(); }
+    }
+    // Sweep left-to-right on the reference pass, jump back on the singing pass.
+    if(session && !session.completed) {
+      const elapsed=audio.currentTime-session.startAt;
+      const t=elapsed>=session.singOffset?elapsed-session.singOffset:elapsed;
+      if(elapsed>=-.2 && elapsed<=session.passDuration+session.singOffset) {
+        const x=L.x(Math.max(0,t));
+        draw.fillStyle='#ffffff13'; draw.fillRect(Math.max(L.left,x-2),L.top,4,L.height);
+        draw.strokeStyle='#f9fbff'; draw.lineWidth=2; draw.beginPath();
+        draw.moveTo(x,L.top-9); draw.lineTo(x,L.h-L.bottom); draw.stroke();
+        draw.fillStyle='#f9fbff'; draw.beginPath();
+        draw.moveTo(x-5,L.top-10); draw.lineTo(x+5,L.top-10); draw.lineTo(x,L.top-3); draw.closePath();draw.fill();
+      }
+    }
+    draw.textBaseline='middle'; draw.textAlign='left'; draw.font='11px system-ui';
+    draw.fillStyle='#94a8ca'; draw.fillText('PITCH',8,16);
+    draw.fillStyle='#94a8ca'; draw.textAlign='right';
+    draw.fillText('TIME →',L.w-14,16);
+  }
+
+  function onConfigChanged(ev) {
+    const cfg=readSettings();
+    // Normalize number inputs after editing, not while a number is being typed.
+    if(ev.type==='change' && ev.target.type==='number') {
+      const id=ev.target.id, original=ev.target.value;
+      ev.target.value=id==='count'?cfg.count:(id==='volume'?Math.round(cfg.volume*100):id==='latency'?Math.round(cfg.latency*1000):cfg[id]);
+      if(original!==ev.target.value) message('Settings are limited to the values shown in each control.');
+    }
+    lastSettings=cfg;
+    if(session && pitchControls.has(ev.target.id)) sequenceDirty=true;
+    if(!session) {
+      if(pitchControls.has(ev.target.id)) { sequence=newSequence(cfg); sequenceDirty=false; }
+      lastResult=setupTimeline(sequence,cfg);
+      updateLegend(false);
+      $('target').textContent='—';
+      $('detected').textContent='—'; $('difference').textContent='—';
+      render();
+    }
+  }
+  for(const id of settingsIds) $(id).addEventListener('change',onConfigChanged);
+  playbackButton.addEventListener('click',()=>{ void play(false); });
+  randomButton.addEventListener('click',()=>{ void play(true); });
+  freeButton.addEventListener('click',()=>{
+    if(freeActive) stopFreePlay();
+    else void startFreePlay();
+  });
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape') {
+      interrupt();
+      updateLegend(lastResult?.kind==='free');
+      message('Stopped. Microphone released. Play again whenever you like.');
+      render();
+    }
+  });
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden && session) {
+      interrupt(); updateLegend(lastResult?.kind==='free');
+      message('Microphone released when the tab was hidden.');
+      render();
+    }
+  });
+  window.addEventListener('resize',render);
+  window.addEventListener('pagehide',()=>{ interrupt(); if(audio) void audio.close(); });
+  sequence=newSequence(lastSettings);
+  lastResult=setupTimeline(sequence,lastSettings);
+  render();
+  // Pure diagnostic interface for automated offline tests; no I/O or permissions.
+  window.__pitchLabDiagnostics=Object.freeze({ estimatePitch, midiHz, hzMidi, notePool, setupTimeline, noteAt,
+    getSequence:()=>sequence.slice(), getSession:()=>session&&({kind:session.kind,phase:session.phase,trace:session.trace.slice(),duration:session.passDuration,hasReference:session.hasReference,seq:session.seq.slice()}),
+    getLastResult:()=>lastResult&&({kind:lastResult.kind,trace:lastResult.trace?.slice(),hasReference:lastResult.hasReference}),
+    getChart:()=>chart&&({lo:chart.lo,hi:chart.hi,markerX:chart.markerX,now:chart.now}) });
+})();
+</script>
+</body>
+</html>
