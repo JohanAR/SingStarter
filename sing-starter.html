@@ -38,7 +38,22 @@
   .metric { min-width:125px; }
   .metric .name { color:#97a9cb; font-size:.82rem; margin-bottom:3px; }
   .metric .val { font-size:1.12rem; font-variant-numeric: tabular-nums; font-weight:650; }
+  .tuning-gauge { width:285px; max-width:100%; flex:0 1 285px; min-width:185px; }
+  .tuning-gauge[hidden], .tuning-needle[hidden] { display:none; }
+  .tuning-track { height:15px; border-radius:5px; position:relative; border:1px solid #7791a0;
+    background:linear-gradient(to right, #eb657c 0% 20%, #fac26f 20% 35%, #56e5aa 35% 65%, #fac26f 65% 80%, #eb657c 80% 100%); }
+  .tuning-track::after { content:''; position:absolute; left:50%; top:-3px; bottom:-3px;
+    border-left:1px solid #0e1220a8; }
+  .tuning-needle { position:absolute; top:-6px; bottom:-6px; width:3px; border-radius:2px;
+    background:#fff; box-shadow:0 0 0 1px #16213a, 0 0 7px #ffffff9c; transform:translateX(-50%); z-index:1; }
+  .tuning-ticks { display:flex; justify-content:space-between; color:#a8b9d3;
+    font-size:.74rem; font-variant-numeric:tabular-nums; margin-top:4px; }
   h2 { font-size:1.15rem; margin:0 0 17px; }
+  .settings-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 20px; margin-bottom:17px; }
+  .settings-head h2 { margin:0; }
+  .settings-tools { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .settings-tools button { font-size:.82rem; padding:7px 10px; font-weight:550; }
+  #storageStatus { font-size:.8rem; color:#9faccc; }
   .controls { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:18px 20px; }
   label.control { display:flex; flex-direction:column; gap:6px; min-width:0; }
   .control span { color:#bfcde5; font-size:.88rem; }
@@ -84,12 +99,24 @@
       <div class="metric"><div id="targetLabel" class="name">Reference at playhead</div><div id="target" class="val">—</div></div>
       <div class="metric"><div class="name">Mic detected</div><div id="detected" class="val">—</div></div>
       <div class="metric"><div id="differenceLabel" class="name">Pitch relative to target</div><div id="difference" class="val">—</div></div>
+      <div id="tuningGauge" class="tuning-gauge" role="meter" aria-label="Pitch deviation from nearest note" aria-valuemin="-50" aria-valuemax="50" aria-valuetext="No pitch detected" hidden>
+        <div class="tuning-track"><div id="tuningNeedle" class="tuning-needle" hidden></div></div>
+        <div class="tuning-ticks"><span>−50¢</span><span>0</span><span>+50¢</span></div>
+      </div>
     </div>
     <p id="message" class="subhelp" role="status">Play a reference sequence and sing it back, or choose free play to watch your pitch scroll continuously. Use headphones when playing references.</p>
   </section>
 
   <section class="panel" aria-label="Settings">
-    <h2>Settings</h2>
+    <div class="settings-head">
+      <h2>Settings</h2>
+      <div class="settings-tools">
+        <span id="storageStatus" role="status">Checking local storage…</span>
+        <button id="exportSettings" type="button">Export settings</button>
+        <button id="importSettings" type="button">Import settings</button>
+        <input id="settingsFile" type="file" accept=".json,application/json" hidden aria-label="Choose settings JSON file">
+      </div>
+    </div>
     <div class="controls">
       <label class="control"><span>Number of notes</span><input id="count" type="number" min="1" max="8" step="1" value="4"></label>
       <label class="control"><span>Note length (seconds)</span><input id="duration" type="number" min="0.2" max="4" step="0.05" value="1"></label>
@@ -108,7 +135,9 @@
         <option value="2">2 (low)</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 (high)</option>
       </select></label>
       <label class="control"><span>Pitch range</span><select id="range">
-        <option value="12" selected>1 octave</option><option value="24">2 octaves</option>
+        <option value="6">0.5 octave</option><option value="12" selected>1 octave</option>
+        <option value="18">1.5 octaves</option><option value="24">2 octaves</option>
+        <option value="30">2.5 octaves</option><option value="36">3 octaves</option>
       </select></label>
 
       <label class="control"><span>Maximum interval</span><select id="interval">
@@ -123,12 +152,12 @@
       <label class="control"><span>Mic latency correction (ms)</span><input id="latency" type="number" min="0" max="350" step="10" value="35"></label>
       <label class="control"><span>Free-play history (seconds)</span><input id="freeWindow" type="number" min="5" max="60" step="1" value="12"></label>
     </div>
-    <p class="subhelp">Changing the note count, key, scale, octave, pitch range, or maximum interval generates a new sequence when idle. With vowel “None”, the reference pass is skipped. In free play, the starting octave and pitch range determine the visible register (with an octave of margin above and below). Settings apply to the next round.</p>
+    <p class="subhelp">Settings are saved automatically when your browser permits local-file storage; browsers can keep separate settings for different file paths or clear them with site data. Export/import JSON for a reliable backup. Changing the note count, key, scale, octave, pitch range, or maximum interval generates a new sequence when idle. With vowel “None”, the reference pass is skipped. In free play, the starting octave and pitch range determine the visible register (with an octave of margin above and below). Settings apply to the next round.</p>
   </section>
   <section class="footnotes" aria-label="Notes">
-    <p><strong>How to use:</strong> For sequence practice, click either play button and allow microphone permission. Listen as the marker crosses each bar, then sing along on the silent pass. Select vowel “None” to skip listening and sing straight away. In free play, pitch moves left past a fixed playhead; every detected pitch is green because there is no target. Click “Stop free play” or press <kbd>Esc</kbd> to stop.</p>
+    <p><strong>How to use:</strong> For sequence practice, click either play button and allow microphone permission. Listen as the marker crosses each bar, then sing along on the silent pass. Select vowel “None” to skip listening and sing straight away. In free play, pitch moves left past a fixed playhead; the trace uses the tuning meter’s colors to show how close you are to the nearest equal-tempered note (green within ±15 cents, yellow within ±30 cents, red beyond that). The meter’s ±50-cent endpoints are halfway between adjacent notes. Click “Stop free play” or press <kbd>Esc</kbd> to stop.</p>
     <p><strong>Pitch tracking:</strong> A simple YIN-style fundamental-frequency detector operates entirely in the page. It works best with a single voice, a reasonably quiet room, and headphones. Tracking has some latency and can make octave errors, particularly with breathy or noisy singing; the graph is feedback, not a medical or musical assessment.</p>
-    <p><strong>Privacy:</strong> All synthesis and microphone analysis happen locally. The microphone is released when a sequence finishes, free play is stopped, or the tab is hidden. The page makes no network requests and contains no third-party code.</p>
+    <p><strong>Privacy:</strong> All synthesis and microphone analysis happen locally. The microphone is released when a sequence finishes, free play is stopped, or the tab is hidden. Only settings (never audio or pitch traces) are saved to local browser storage when available. The page makes no network requests and contains no third-party code.</p>
   </section>
 </main>
 <script>
@@ -141,6 +170,7 @@
   const randomButton = $('random');
   const freeButton = $('free');
   const settingsIds = ['count','duration','gap','lead','root','scale','octave','range','interval','vowel','volume','latency','freeWindow'];
+  const storageKey = 'pitch-matching-lab-settings-v1';
   const pitchControls = new Set(['count','root','scale','octave','range','interval']);
   const names = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
   const scales = {
@@ -156,8 +186,95 @@
   let sequence = [], audio = null, master = null, micStream = null, micSource = null;
   let analyser = null, micSink = null, microphoneData = null;
   let session = null, generation = 0, frameId = 0, lastResult = null, sequenceDirty = false;
-  let scheduledNodes = [], lastSettings = readSettings();
+  let scheduledNodes = [], lastSettings = null;
   let chart = null, freeActive = false;
+
+  // LocalStorage behavior for file:// URLs differs between browsers, so every
+  // operation is guarded. Export/import works independently of browser storage.
+  function availableStorage() {
+    try {
+      const store = window.localStorage, probe = storageKey + '-probe';
+      store.setItem(probe, 'ok');
+      const available = store.getItem(probe) === 'ok';
+      store.removeItem(probe);
+      return available ? store : null;
+    } catch (_) { return null; }
+  }
+  const storage = availableStorage();
+  function storageStatus(text) { $('storageStatus').textContent = text; }
+  function settingsSnapshot() {
+    return Object.fromEntries(settingsIds.map(id => [id, $(id).value]));
+  }
+  function validateSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot))
+      throw new Error('Invalid settings format');
+    const valid = {};
+    for (const id of settingsIds) {
+      const value = snapshot[id];
+      if (typeof value !== 'string' && typeof value !== 'number') continue;
+      const field = $(id), raw = String(value);
+      if (field.tagName === 'SELECT') {
+        if ([...field.options].some(option => option.value === raw)) valid[id] = raw;
+      } else if (raw.trim() && Number.isFinite(Number(raw))) {
+        const min = Number(field.min), max = Number(field.max);
+        // Don't round to the HTML 'step': older/default values such as 35 ms
+        // latency may not be aligned to a control's spinner increment.
+        valid[id] = String(clamp(Number(raw), min, max));
+      }
+    }
+    if (!Object.keys(valid).length) throw new Error('No recognized settings in file');
+    return valid;
+  }
+  function applySnapshot(snapshot) {
+    const valid = validateSnapshot(snapshot);
+    for (const [id, value] of Object.entries(valid)) $(id).value = value;
+  }
+  function saveSettings() {
+    if (!storage) return;
+    try {
+      storage.setItem(storageKey, JSON.stringify({version:1, settings:settingsSnapshot()}));
+      storageStatus('Saved in this browser');
+    } catch (_) { storageStatus('Browser storage blocked · use Export'); }
+  }
+  function loadSettings() {
+    if (!storage) { storageStatus('Auto-save unavailable · use Export'); return; }
+    try {
+      const json = storage.getItem(storageKey);
+      if (json) {
+        const parsed = JSON.parse(json);
+        if (parsed.version !== 1) throw new Error('Unsupported saved settings version');
+        applySnapshot(parsed.settings);
+        storageStatus('Restored saved settings');
+      } else storageStatus('Auto-save available');
+    } catch (err) {
+      storageStatus('Could not restore settings · defaults loaded');
+      console.warn('Pitch Matching Lab could not restore settings:', err);
+    }
+  }
+  function exportSettings() {
+    const json = JSON.stringify({version:1, settings:settingsSnapshot()}, null, 2);
+    const url = URL.createObjectURL(new Blob([json+'\n'], {type:'application/json'}));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'pitch-matching-settings.json';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    message('Settings exported as JSON. Keep this file to restore them in another browser or file location.');
+  }
+  async function importSettings(file) {
+    if (!file) return;
+    try {
+      if (file.size > 100000) throw new Error('Settings file is unexpectedly large');
+      const data = JSON.parse(await file.text());
+      if (data.version !== 1) throw new Error('Unsupported settings version');
+      applySnapshot(data.settings);
+      saveSettings();
+      refreshSettings();
+      message('Settings imported. Any running session keeps its original settings; the next session uses the new ones.');
+    } catch (err) { message('Could not import settings: '+err.message, true); }
+  }
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function readBounded(id) {
@@ -225,11 +342,29 @@
   }
   function updateLegend(isFree) {
     $('legendTarget').hidden=isFree;
-    $('legendYellow').hidden=isFree;
-    $('legendRed').hidden=isFree;
-    $('legendGreen').lastChild.textContent=isFree?' Any detected pitch':' Within 40 cents';
+    $('legendYellow').hidden=false;
+    $('legendRed').hidden=false;
+    $('legendGreen').lastChild.textContent=isFree?' Within 15 cents of nearest note':' Within 40 cents';
+    $('legendYellow').lastChild.textContent=isFree?' 15–30 cents from nearest note':' 40–90 cents off';
+    $('legendRed').lastChild.textContent=isFree?' 30–50 cents from nearest note':' More than 90 cents off';
     $('targetLabel').textContent=isFree?'Reference':'Reference at playhead';
     $('differenceLabel').textContent=isFree?'From nearest note':'Pitch relative to target';
+    $('tuningGauge').hidden=!isFree;
+    if(!isFree) updateTuningGauge(null);
+  }
+  function updateTuningGauge(deviation) {
+    const gauge=$('tuningGauge'), needle=$('tuningNeedle');
+    if(deviation===null || !Number.isFinite(deviation)) {
+      needle.hidden=true;
+      gauge.removeAttribute('aria-valuenow');
+      gauge.setAttribute('aria-valuetext','No pitch detected');
+      return;
+    }
+    const cents=clamp(deviation,-50,50);
+    needle.hidden=false;
+    needle.style.left=(cents+50)+'%';
+    gauge.setAttribute('aria-valuenow',String(Math.round(cents)));
+    gauge.setAttribute('aria-valuetext',(cents>=0?'+':'')+Math.round(cents)+' cents from nearest note');
   }
 
   async function ensureAudioAndMic(token) {
@@ -290,6 +425,7 @@
     setButtons(false);
     state('Ready');
     $('detected').textContent='—'; $('difference').textContent='—';
+    updateTuningGauge(null);
   }
 
   function makeVoiceWave(freq, vowel) {
@@ -402,7 +538,7 @@
       state('Free play · Listening','sing');
       $('target').textContent='Any note';
       $('detected').textContent='—'; $('difference').textContent='—';
-      message('Sing any notes. Every detected pitch is green; the history scrolls left from the fixed marker.');
+      message('Sing any notes. Trace colors show your tuning relative to the nearest note while the history scrolls left.');
       render();
       frameId=requestAnimationFrame(tick);
     } catch(error) {
@@ -498,6 +634,7 @@
       session.smoothedMidi=null;
       session.breakTrace=true;
       $('detected').textContent='—'; $('difference').textContent='—';
+      if(isFree) updateTuningGauge(null);
       return;
     }
     let midi=hzMidi(pitch.hz);
@@ -515,6 +652,7 @@
     if(isFree) {
       const deviation=100*(midi-Math.round(midi));
       $('difference').textContent=(deviation>=0?'+':'')+Math.round(deviation)+' cents';
+      updateTuningGauge(deviation);
     } else {
       $('difference').textContent=error===null ? 'In a gap' : (error>=0?'+':'')+Math.round(error)+' cents';
     }
@@ -600,6 +738,13 @@
     const magnitude=Math.abs(error);
     return magnitude<=40?'#56e5aa':magnitude<=90?'#fac26f':'#f27f91';
   }
+  // Equal-tempered notes are separated by 100 cents, so the deviation from
+  // the nearest note is always between -50 and +50 cents. Match the tuning
+  // gauge's green ±15 / yellow ±30 / red ±50 cent regions exactly.
+  function colorForTuningDeviation(midi) {
+    const cents=Math.abs(100*(midi-Math.round(midi)));
+    return cents<=15+1e-8?'#56e5aa':cents<=30+1e-8?'#fac26f':'#eb657c';
+  }
   function renderFreeChart(timeline,L) {
     // The cursor never moves: the newest pitch always arrives just to its left.
     const trace=timeline.trace||[];
@@ -619,7 +764,7 @@
     for(let j=0;j<trace.length;j++) {
       const b=trace[j], a=trace[j-1];
       const x=L.x(b.t), y=L.y(b.midi);
-      draw.strokeStyle='#56e5aa'; draw.fillStyle='#56e5aa';
+      draw.strokeStyle=colorForTuningDeviation(b.midi); draw.fillStyle=draw.strokeStyle;
       draw.lineWidth=3.4; draw.lineCap='round';
       if(a && a.segment===b.segment && b.t-a.t<.11 && Math.abs(a.midi-b.midi)<7) {
         draw.beginPath(); draw.moveTo(L.x(a.t),L.y(a.midi)); draw.lineTo(x,y); draw.stroke();
@@ -715,6 +860,19 @@
     draw.fillText('TIME →',L.w-14,16);
   }
 
+  function refreshSettings(changedId=null) {
+    const cfg=readSettings();
+    lastSettings=cfg;
+    if(session && (changedId===null || pitchControls.has(changedId))) sequenceDirty=true;
+    if(!session) {
+      if(changedId===null || pitchControls.has(changedId)) { sequence=newSequence(cfg); sequenceDirty=false; }
+      lastResult=setupTimeline(sequence,cfg);
+      updateLegend(false);
+      $('target').textContent='—';
+      $('detected').textContent='—'; $('difference').textContent='—';
+      render();
+    }
+  }
   function onConfigChanged(ev) {
     const cfg=readSettings();
     // Normalize number inputs after editing, not while a number is being typed.
@@ -723,18 +881,21 @@
       ev.target.value=id==='count'?cfg.count:(id==='volume'?Math.round(cfg.volume*100):id==='latency'?Math.round(cfg.latency*1000):cfg[id]);
       if(original!==ev.target.value) message('Settings are limited to the values shown in each control.');
     }
-    lastSettings=cfg;
-    if(session && pitchControls.has(ev.target.id)) sequenceDirty=true;
-    if(!session) {
-      if(pitchControls.has(ev.target.id)) { sequence=newSequence(cfg); sequenceDirty=false; }
-      lastResult=setupTimeline(sequence,cfg);
-      updateLegend(false);
-      $('target').textContent='—';
-      $('detected').textContent='—'; $('difference').textContent='—';
-      render();
-    }
+    refreshSettings(ev.target.id);
+    saveSettings();
   }
-  for(const id of settingsIds) $(id).addEventListener('change',onConfigChanged);
+  for(const id of settingsIds) {
+    $(id).addEventListener('change',onConfigChanged);
+    // Save unfinished number edits too (e.g. if the user closes the page without blurring).
+    if($(id).type==='number') $(id).addEventListener('input',saveSettings);
+  }
+  $('exportSettings').addEventListener('click',exportSettings);
+  $('importSettings').addEventListener('click',()=>{ $('settingsFile').click(); });
+  $('settingsFile').addEventListener('change',event=>{
+    const file=event.target.files?.[0];
+    event.target.value='';
+    void importSettings(file);
+  });
   playbackButton.addEventListener('click',()=>{ void play(false); });
   randomButton.addEventListener('click',()=>{ void play(true); });
   freeButton.addEventListener('click',()=>{
@@ -757,12 +918,15 @@
     }
   });
   window.addEventListener('resize',render);
-  window.addEventListener('pagehide',()=>{ interrupt(); if(audio) void audio.close(); });
+  window.addEventListener('pagehide',()=>{ saveSettings(); interrupt(); if(audio) void audio.close(); });
+  loadSettings();
+  lastSettings=readSettings();
   sequence=newSequence(lastSettings);
   lastResult=setupTimeline(sequence,lastSettings);
   render();
   // Pure diagnostic interface for automated offline tests; no I/O or permissions.
   window.__pitchLabDiagnostics=Object.freeze({ estimatePitch, midiHz, hzMidi, notePool, setupTimeline, noteAt,
+    tuningDeviation:midi=>100*(midi-Math.round(midi)), colorForTuningDeviation, getStoredSettings:()=>storage?.getItem(storageKey) ?? null,
     getSequence:()=>sequence.slice(), getSession:()=>session&&({kind:session.kind,phase:session.phase,trace:session.trace.slice(),duration:session.passDuration,hasReference:session.hasReference,seq:session.seq.slice()}),
     getLastResult:()=>lastResult&&({kind:lastResult.kind,trace:lastResult.trace?.slice(),hasReference:lastResult.hasReference}),
     getChart:()=>chart&&({lo:chart.lo,hi:chart.hi,markerX:chart.markerX,now:chart.now}) });
